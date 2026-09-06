@@ -1,11 +1,18 @@
 package com.githubupload.mt
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
+import android.text.method.ScrollingMovementMethod
+import android.view.WindowManager
+import android.widget.ScrollView
+import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.githubupload.mt.databinding.ActivityMainBinding
 import java.io.File
@@ -24,6 +31,12 @@ class MainActivity : AppCompatActivity() {
     private var selectedDirUri: Uri? = null
     private var hasCurrentSessionDirectorySelection = false
 
+    /** 内存中的完整日志，用于弹窗展示 */
+    private val logBuffer = StringBuilder()
+    private var logDialog: AlertDialog? = null
+    private var logTextView: TextView? = null
+    private var logScrollView: ScrollView? = null
+
     private val directoryPickerRequestCode = 2001
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,12 +50,13 @@ class MainActivity : AppCompatActivity() {
         binding.btnSelectDir.setOnClickListener { selectDirectory() }
         binding.btnSaveConfig.setOnClickListener { saveConfig() }
         binding.btnUpload.setOnClickListener { startUpload() }
-        binding.btnClearLog.setOnClickListener { binding.tvLog.text = "" }
+        binding.btnLog.setOnClickListener { showLogDialog() }
 
         refreshPermissionState()
         log("应用已启动")
         log("选择目录后会递归上传全部子目录和文件")
         log("上传引擎使用 GitHub REST API，不依赖 JGit")
+        log("文件过多时会自动分批次上传，Blob 创建已并行加速")
     }
 
     override fun onResume() {
@@ -188,7 +202,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     log("❌ 上传失败：${result.message}")
                     if (!forcePush) log("如遇非快进冲突，可勾选“强制推送”后再次执行")
-                    Toast.makeText(this, "上传失败，请查看执行日志", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "上传失败，请查看运行日志", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -216,6 +230,12 @@ class MainActivity : AppCompatActivity() {
         binding.btnSaveConfig.isEnabled = !uploading
         binding.btnSelectDir.isEnabled = !uploading
         binding.btnUpload.text = if (uploading) "上传中…" else "一键上传"
+        // 上传期间保持屏幕常亮，防止息屏中断
+        if (uploading) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
     }
 
     private fun hasAllFilesPermission(): Boolean = Environment.isExternalStorageManager()
@@ -244,16 +264,68 @@ class MainActivity : AppCompatActivity() {
         runOnUiThread {
             val now = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
             val line = "[$now] $message"
-            val current = binding.tvLog.text?.toString().orEmpty()
-            val combined = if (current.isBlank()) line else "$current\n$line"
-            binding.tvLog.text = if (combined.length > MAX_LOG_CHARS) combined.takeLast(MAX_LOG_CHARS) else combined
-            binding.tvLog.post {
-                binding.tvLog.layout?.let { layout ->
-                    val scrollAmount = layout.getLineTop(binding.tvLog.lineCount) - binding.tvLog.height
-                    binding.tvLog.scrollTo(0, maxOf(scrollAmount, 0))
+            if (logBuffer.isNotEmpty()) logBuffer.append('\n')
+            logBuffer.append(line)
+            // 防止内存无限增长
+            if (logBuffer.length > MAX_LOG_CHARS) {
+                logBuffer.delete(0, logBuffer.length - MAX_LOG_CHARS)
+            }
+            // 若日志弹窗正在显示，实时刷新
+            logTextView?.let { tv ->
+                tv.text = logBuffer.toString()
+                logScrollView?.post {
+                    logScrollView?.fullScroll(ScrollView.FOCUS_DOWN)
                 }
             }
         }
+    }
+
+    private fun showLogDialog() {
+        if (logDialog?.isShowing == true) {
+            logDialog?.dismiss()
+        }
+
+        val scrollView = ScrollView(this).apply {
+            isFillViewport = true
+            setPadding(32, 16, 32, 16)
+        }
+        val textView = TextView(this).apply {
+            text = if (logBuffer.isEmpty()) "暂无日志" else logBuffer.toString()
+            textSize = 13f
+            typeface = android.graphics.Typeface.MONOSPACE
+            setTextIsSelectable(true) // 支持长按复制
+            movementMethod = ScrollingMovementMethod.getInstance()
+            setPadding(8, 8, 8, 8)
+            setBackgroundColor(0x12000000)
+        }
+        scrollView.addView(textView)
+        logScrollView = scrollView
+        logTextView = textView
+
+        logDialog = AlertDialog.Builder(this)
+            .setTitle("运行日志")
+            .setView(scrollView)
+            .setPositiveButton("关闭", null)
+            .setNeutralButton("清空") { _, _ ->
+                logBuffer.clear()
+                textView.text = "暂无日志"
+                Toast.makeText(this, "日志已清空", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("复制全部") { _, _ ->
+                val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                cm.setPrimaryClip(ClipData.newPlainText("log", logBuffer.toString()))
+                Toast.makeText(this, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
+            }
+            .setOnDismissListener {
+                logTextView = null
+                logScrollView = null
+                logDialog = null
+            }
+            .create()
+
+        logDialog?.show()
+        // 打开后自动滚到底部
+        scrollView.post { scrollView.fullScroll(ScrollView.FOCUS_DOWN) }
     }
 
     private fun formatBytes(bytes: Long): String = when {
@@ -266,6 +338,8 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         uploadFuture?.cancel(true)
         executor.shutdownNow()
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        logDialog?.dismiss()
         super.onDestroy()
     }
 
@@ -277,6 +351,6 @@ class MainActivity : AppCompatActivity() {
         private const val KEY_LOCAL_URI = "local_uri"
         private const val KEY_BRANCH = "branch"
         private const val KEY_FORCE_PUSH = "force_push"
-        private const val MAX_LOG_CHARS = 50_000
+        private const val MAX_LOG_CHARS = 80_000
     }
 }

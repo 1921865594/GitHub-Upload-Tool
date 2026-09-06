@@ -11,13 +11,31 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <TextView
+        <!-- 标题行：左侧标题 + 右侧日志按钮 -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="GitHub 上传工具"
-            android:textSize="24sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="4dp" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="4dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="GitHub 上传工具"
+                android:textSize="24sp"
+                android:textStyle="bold" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnLog"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="日志"
+                android:minWidth="0dp"
+                android:paddingHorizontal="16dp" />
+        </LinearLayout>
 
         <TextView
             android:layout_width="match_parent"
@@ -152,53 +170,6 @@
                 android:text="一键上传" />
         </LinearLayout>
 
-        <com.google.android.material.card.MaterialCardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:cardCornerRadius="14dp"
-            app:cardElevation="2dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="12dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="8dp">
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="执行日志"
-                        android:textSize="17sp"
-                        android:textStyle="bold" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnClearLog"
-                        style="@style/Widget.Material3.Button.TextButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="清空" />
-                </LinearLayout>
-
-                <TextView
-                    android:id="@+id/tvLog"
-                    android:layout_width="match_parent"
-                    android:layout_height="260dp"
-                    android:background="#12000000"
-                    android:fontFamily="monospace"
-                    android:gravity="top|start"
-                    android:padding="10dp"
-                    android:scrollbars="vertical"
-                    android:text="未运行 待上传..."
-                    android:textSize="13sp" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+        <!-- 底部日志窗口已移除，改为标题栏右侧“日志”按钮弹出 -->
     </LinearLayout>
 </ScrollView>
